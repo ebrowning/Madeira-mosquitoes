@@ -39,6 +39,12 @@ data = data %>%
                 crop_500m = scale(proportion_cropland_500m ), 
                 builtup_500m = scale(proportion_builtup_500m ), 
                 water_500m = scale(proportion_permwaterbodies_500m),
+                temp_anomaly = scale(era5_sfc_temperature_2m), 
+                prec_anomaly = scale(era5_sfc_precipitation), 
+                hum_anomaly = scale(era5_sfc_humidity),
+                population_census = scale(population_census), 
+                disp_income = scale(disp_income_2015),
+                estat_pop_1km = scale(estat_pop_1km),
                 intercept = 1) %>%
   mutate_at(c(62:134), funs(c(scale(.)))) # scales weather vars
 
@@ -47,15 +53,13 @@ colnames(data)
 # some further data sorting 
 colnames(data)[c(8:10, 136:137)] <- c("agency_responsible", "location", "in_out", "gross_income", "income_tax")
 
-data$population_census <- scale(data$population_census)
 data$gross_income <- gsub(" ", "", data$gross_income)
 data$gross_income <- scale(as.numeric(data$gross_income))
-data$income_tax <- gsub(" ", "", data$income_tax)
-data$income_tax <- as.numeric(data$income_tax)
 
 data$agency_responsible = as.factor(data$agency_responsible)
 data$in_out = as.factor(data$in_out)
 data$ID.year = as.numeric(data$year) - 2012 +1
+data$ID.year.grp = data$ID.year
 data$month = as.factor(data$month)
 data$month = factor(data$month, levels = c("1", "2", "3", "4", "5", "6", "7",
                                            "8", "9", "10", "11", "12"), 
@@ -100,7 +104,8 @@ data$week.x[data$week.x == 53] <- 52
   
 # double check no covariance 
 lm500m <- lm(value ~ tree_500m + grass_500m + crop_500m + builtup_500m + 
-               max_temp_1.5m + hmax_6lag + psum_6lag + max_wind_intensity + population_census + gross_income + elevation,
+               max_temp_1.5m + hmax_6lag + psum_6lag + max_wind_intensity + estat_pop_1km + 
+               disp_income + elevation + prec_anomaly,
              data = data)
 car::vif(lm500m)
   
@@ -151,8 +156,8 @@ A = inla.spde.make.A(mesh = mesh_poly2, loc = locs, group = data$ID.year, group.
 data$intercept <- 1
 
 # covs to be used in models 
-mod_covs <- c("intercept", "Id.Novo", "week.x", "month","year", "ID.year", "agency_responsible",
-              "agency_responsible", "location", "in_out", "altitude", "elevation", "population_census", "gross_income",
+mod_covs <- c("intercept", "Id.Novo", "week.x", "month","year", "ID.year", "ID.year.grp",
+              "agency_responsible", "location", "in_out", "altitude", "elevation",
               "max_humid",  "hmax_6lag",
                "psum_6lag",
               "min_temp_1.5m", 
@@ -161,7 +166,8 @@ mod_covs <- c("intercept", "Id.Novo", "week.x", "month","year", "ID.year", "agen
               "elevation", "time_since_ep",
               "tree_500m", "shrub_500m",             
               "grass_500m", "bspveg_500m", "crop_500m", "builtup_500m",
-              "water_500m" 
+              "water_500m", "temp_anomaly", "prec_anomaly","hum_anomaly", 
+              "disp_income", "estat_pop_1km"
 )
 
 # Make stacks for and specify hyperparameters for the random walk
@@ -172,19 +178,20 @@ stack_1 <- inla.stack(tag = 'est', # name tag of the stack (e.g. here est = esti
                                    data.frame(data[ ,..mod_covs])))
 my.init = NULL
 
-hyper_rwt <- list(theta = list(prior = "pc.prec", param = c(1, 0.01)))
 hyper.rw_temp = list(theta = list(prior="pc.prec", param=c(3, 0.0001)))
+hyper.rw_yr = list(theta = list(prior="pc.prec", param=c(20, 0.0000001)))
 hyper.rw_hum = list(theta = list(prior="pc.prec", param=c(1, 0.001)))
+hyper.ar_precan = list(rho = list(prior="pc.prec", param=c(0.5, 0.0000000001)))
+
 fx1_500 <- y ~ -1 + intercept +
   f(week.x, model = "rw2", cyclic = TRUE, group = ID.year, control.group = list(model = "rw2")) +
-  f(ID.year, model = "rw2") +
+  f(ID.year, model = "rw2", hyper = hyper.rw_yr) +
   f(s, model = spde2, group = s.group, control.group = list(model = "ar1")) +
-  #f(as.factor(location), model = "iid", hyper = hyper.rw_temp) +
   f(max_temp_1.5m, model = "rw2", hyper = hyper.rw_temp) +
-  f(hmax_6lag, model = "rw2", hyper = hyper.rw_hum) +
+  #f(hmax_6lag, model = "rw2", hyper = hyper.rw_hum) + # model fits better without
+  f(prec_anomaly, model = "ar1", hyper = hyper.ar_precan) +
+  estat_pop_1km +
   elevation +
-  population_census +
-  gross_income +
   builtup_500m +
   crop_500m +
   grass_500m +
@@ -196,7 +203,7 @@ fx1_500 <- y ~ -1 + intercept +
 m1_st_500 <- inla(fx1_500, family = "nbinomial", 
                      control.family = list(link = "log"),
                      data = inla.stack.data(stack_1), 
-                     #control.inla = list(int.strategy='eb', npoints = 21),
+                     control.inla = list(int.strategy='eb', npoints = 21),
                      control.fixed=list(prec = 1),
                      control.mode=list(restart=T, theta=my.init),
                      control.predictor=list(A = inla.stack.A(stack_1), link = 1, compute=TRUE),
