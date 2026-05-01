@@ -13,20 +13,6 @@ data = data %>%
                 Y_UTM_rescaled = (Y_UTM - min(Y_UTM))/1000, 
                 altitude = scale(Z_m),
                 elevation = scale(ele_vals...2.),
-                tree_50m = scale(proportion_treecover_50m ), 
-                shrub_50m = scale(proportion_shrubland_50m ),
-                grass_50m = scale(proportion_grassland_50m ),
-                bspveg_50m = scale(proportion_baresparseveg_50m),
-                crop_50m = scale(proportion_cropland_50m ), 
-                builtup_50m = scale(proportion_builtup_50m ), 
-                water_50m = scale(proportion_permwaterbodies_50m ), 
-                tree_100m = scale(proportion_treecover_100m ), 
-                shrub_100m = scale(proportion_shrubland_100m ),
-                grass_100m = scale(proportion_grassland_100m ),
-                bspveg_100m = scale(proportion_baresparseveg_100m),
-                crop_100m = scale(proportion_cropland_100m ), 
-                builtup_100m = scale(proportion_builtup_100m ), 
-                water_100m = scale(proportion_permwaterbodies_100m ),
                 tree_500m = scale(proportion_treecover_500m ), 
                 shrub_500m = scale(proportion_shrubland_500m ),
                 grass_500m = scale(proportion_grassland_500m ), 
@@ -46,9 +32,6 @@ colnames(data)
 
 # some further data sorting 
 colnames(data)[c(8:10, 136:137)] <- c("agency_responsible", "location", "in_out", "gross_income", "income_tax")
-
-data$gross_income <- gsub(" ", "", data$gross_income)
-data$gross_income <- scale(as.numeric(data$gross_income))
 
 data$agency_responsible = as.factor(data$agency_responsible)
 data$in_out = as.factor(data$in_out)
@@ -85,7 +68,7 @@ data$week.x[data$week.x == 53] <- 52
 # covs to be used in models 
 cv_covs <- c("value", "intercept", "Freguesia...Parish", "Id.Novo", "week.x", "month","year", "ID.year", 
               "location", "longitude.x", "latitude.x",
-             "elevation", "population_census",
+             "elevation", 
               "hmax_6lag", "psum_6lag",
              "max_temp_1.5m","max_wind_intensity",
               "tree_500m",             
@@ -137,7 +120,7 @@ ll = list.files(save_dir)
   
   form_base = paste(c("y ~ -1 + intercept",
     "f(week.x, model = 'rw2', cyclic = TRUE, group = ID.year, control.group = list(model = 'rw2'))",
-    "f(ID.year, model = 'rw2')",
+    "f(ID.year, model = 'rw2', hyper = hyper.rw_yr)",
     "f(s, model = spde2, group = s.group, control.group = list(model = 'ar1'))"),
   collapse = " + "
   )
@@ -146,19 +129,16 @@ ll = list.files(save_dir)
 # covariate names
   effect_names_500 = 
     c("f(max_temp_1.5m, model = 'rw2', hyper = hyper_rw_temp, scale.model=TRUE, constr=TRUE)",
-      "f(hmax_6lag, model = 'rw2', hyper = hyper_rw_hum, scale.model=TRUE, constr=TRUE)",
+      "f(prec_anomaly, model = 'ar1', hyper = hyper.ar_precan)",
       "elevation",
-      "population_census",
-      "disp_income",
+      "estat_pop_1km",
       "builtup_500m", 
       "crop_500m",
       "grass_500m",
       "tree_500m",
       "builtup_500m * elevation",
       "psum_6lag",
-      "max_wind_intensity",
-      "prec_anomaly",
-      "temp_anomaly")
+      "max_wind_intensity")
   
   fx = vector("list", length=length(effect_names_500)+1)
   
@@ -178,8 +158,8 @@ ll = list.files(save_dir)
   # create data frame including formulae
   fx = data.frame(modid = 1:length(fx),
                   fx = fx,
-                  candidate = c(name, "tmax",  "hmax_6lag", "elevation", "population_census", "gross_income", "builtup",
-                                "crop_500", "grass", "tree", "builtup*elevation","psum_6lag", "max_wind_intensity", "prec_anomaly", "temp_anomaly"),
+                  candidate = c(name, "tmax",  "prec_anom", "elevation", "estat_pop_1km", "builtup",
+                                "crop_500", "grass", "tree", "builtup*elevation", "psum_6lag", "max_wind_intensity"),
                   formula = paste(form_base, fx, sep=" + "))
   
   bs = data.frame(modid = "baseline", fx = "baseline", candidate="baseline", formula=form_base)
@@ -242,9 +222,10 @@ ll = list.files(save_dir)
   locs = cbind(ddf$longitude.x, ddf$latitude.x)
   A = inla.spde.make.A(mesh = mesh_poly2, loc = locs, group = ddf$ID.year, group.mesh = mesh.t)
   
-  hyper_rwt <- list(theta = list(prior = "pc.prec", param = c(1, 0.01)))
   hyper_rw_temp = list(theta = list(prior="pc.prec", param=c(3, 0.0001)))
-  hyper_rw_hum = list(theta = list(prior="pc.prec", param=c(1, 0.001)))
+  hyper.rw_yr = list(theta = list(prior="pc.prec", param=c(20, 0.0000001)))
+  hyper.ar_precan = list(rho = list(prior="pc.prec", param=c(0.5, 0.0000000001)))
+
 ### ------------------------------------------------------------------------- ###
 
 # ---------------- chooses and fits model under k-fold CV -------------------- #
