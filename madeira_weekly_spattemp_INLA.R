@@ -1,6 +1,6 @@
 library(data.table); library(dplyr); library(INLA);library(terra);library(ggplot2)
 #inla.upgrade(testing=TRUE)
-source('funcs_plotting_inla.R')
+source("00_custom_functions_4_inla_outputs.R")
 ################################################################################
 
 ################################################################################
@@ -179,16 +179,17 @@ stack_1 <- inla.stack(tag = 'est', # name tag of the stack (e.g. here est = esti
 my.init = NULL
 
 hyper.rw_temp = list(theta = list(prior="pc.prec", param=c(3, 0.0001)))
-hyper.rw_yr = list(theta = list(prior="pc.prec", param=c(20, 0.0000001)))
-hyper.rw_hum = list(theta = list(prior="pc.prec", param=c(1, 0.001)))
-hyper.ar_precan = list(rho = list(prior="pc.prec", param=c(0.5, 0.0000000001)))
+hyper.rw_yr = list(theta = list(prior="pc.prec", param=c(20, 0.00000001)))
+hyper.rw_hum = list(theta = list(prior="pc.prec", param=c(1, 0.0001)))
+hyper.ar_precan = list(rho = list(prior="pc.prec", param=c(0.5, 0.000000000001)))
+
 
 fx1_500 <- y ~ -1 + intercept +
   f(week.x, model = "rw2", cyclic = TRUE, group = ID.year, control.group = list(model = "rw2")) +
   f(ID.year, model = "rw2", hyper = hyper.rw_yr) +
   f(s, model = spde2, group = s.group, control.group = list(model = "ar1")) +
   f(max_temp_1.5m, model = "rw2", hyper = hyper.rw_temp) +
-  #f(hmax_6lag, model = "rw2", hyper = hyper.rw_hum) + # model fits better without
+  f(hmax_6lag, model = "rw2", hyper = hyper.rw_hum) + # model fits better without
   f(prec_anomaly, model = "ar1", hyper = hyper.ar_precan) +
   estat_pop_1km +
   elevation +
