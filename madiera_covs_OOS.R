@@ -129,6 +129,7 @@ ll = list.files(save_dir)
 # covariate names
   effect_names_500 = 
     c("f(max_temp_1.5m, model = 'rw2', hyper = hyper_rw_temp, scale.model=TRUE, constr=TRUE)",
+      "f(hmax_6lag, model = 'rw2', hyper = hyper.rw_hum)",
       "f(prec_anomaly, model = 'ar1', hyper = hyper.ar_precan)",
       "elevation",
       "estat_pop_1km",
@@ -158,7 +159,7 @@ ll = list.files(save_dir)
   # create data frame including formulae
   fx = data.frame(modid = 1:length(fx),
                   fx = fx,
-                  candidate = c(name, "tmax",  "prec_anom", "elevation", "estat_pop_1km", "builtup",
+                  candidate = c(name, "tmax", "hmax_6lag", "prec_anom", "elevation", "estat_pop_1km", "builtup",
                                 "crop_500", "grass", "tree", "builtup*elevation", "psum_6lag", "max_wind_intensity"),
                   formula = paste(form_base, fx, sep=" + "))
   
