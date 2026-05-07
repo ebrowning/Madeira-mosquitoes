@@ -1,6 +1,6 @@
 library(data.table); library(dplyr); library(INLA)
-
-source("/Users/ellabrowning/Downloads/rorygibb-dengue_vietnam_ms-b50fcd5/scripts_full/04_modelling/00_inla_setup_functions_r4.R")
+# load custom functions for plotting and processing INLA and 
+source("00_custom_functions_4_inla_outputs.R")
 # read in data 
 data = fread("madeira_data_esa_weather_weekly.csv")
 ################################################################################
@@ -223,8 +223,8 @@ ll = list.files(save_dir)
   A = inla.spde.make.A(mesh = mesh_poly2, loc = locs, group = ddf$ID.year, group.mesh = mesh.t)
   
   hyper_rw_temp = list(theta = list(prior="pc.prec", param=c(3, 0.0001)))
-  hyper.rw_yr = list(theta = list(prior="pc.prec", param=c(20, 0.0000001)))
-  hyper.ar_precan = list(rho = list(prior="pc.prec", param=c(0.5, 0.0000000001)))
+  hhyper.rw_yr = list(theta = list(prior="pc.prec", param=c(20, 0.0000001)))
+  hyper.ar_precan = list(rho = list(prior="pc.prec", param=c(0.5, 0.000000000001)))
 
 ### ------------------------------------------------------------------------- ###
 
@@ -298,7 +298,7 @@ for(i in 1:nrow(fx)){
       inla(form_i, family = "nbinomial", 
                       control.family = list(link = "log"),
                       data = inla.stack.data(stack_i), 
-                      #control.inla = list(int.strategy='eb', npoints = 21),
+                      control.inla = list(int.strategy='eb', npoints = 21),
                       control.fixed=list(prec = 1),
                       control.mode=list(restart=T, theta=my.init),
                       control.predictor=list(A = inla.stack.A(stack_i), link = 1, compute=TRUE),
@@ -313,7 +313,7 @@ for(i in 1:nrow(fx)){
         inla(form_i, family = "nbinomial", 
              control.family = list(link = "log"),
              data = inla.stack.data(stack_i), 
-             #control.inla = list(int.strategy='eb', npoints = 21),
+             control.inla = list(int.strategy='eb', npoints = 21),
              control.fixed=list(prec = 1),
              control.mode=list(restart=T, theta=my.init),
              control.predictor=list(A = inla.stack.A(stack_i), link = 1, compute=TRUE),
