@@ -1,41 +1,62 @@
 library(data.table); library(dplyr); library(INLA)
-# load custom functions for plotting and processing INLA and 
-source("00_custom_functions_4_inla_outputs.R")
+
+source("/Users/ellabrowning/Downloads/rorygibb-dengue_vietnam_ms-b50fcd5/scripts_full/04_modelling/00_inla_setup_functions_r4.R")
 # read in data 
 data = fread("madeira_data_esa_weather_weekly.csv")
 ################################################################################
 colnames(data)
+
+data$hmax_6lag[data$hmax_6lag == "-Inf"] <- NA
+data$hmax_4lag[data$hmax_4lag == "-Inf"] <- NA
+data$psum_6lag[data$psum_6lag == "-Inf"] <- NA
+data$max_wind_intensity[data$max_wind_intensity == "-Inf"] <- NA
+
 # scale all covariates for model
 data = data %>%
+  dplyr::filter(value < 9999) %>% # remove these rows - not valid records.
   dplyr::mutate(year_month = as.Date(paste(year, paste(month, "01", sep = "-"), sep = "-")),
                 year_week = paste(year, week.x, sep = "_"),
                 X_UTM_rescaled = (X_UTM - min(X_UTM))/1000,
                 Y_UTM_rescaled = (Y_UTM - min(Y_UTM))/1000, 
-                altitude = scale(Z_m),
-                elevation = scale(ele_vals...2.),
-                tree_500m = scale(proportion_treecover_500m ), 
-                shrub_500m = scale(proportion_shrubland_500m ),
-                grass_500m = scale(proportion_grassland_500m ), 
-                bspveg_500m = scale(proportion_baresparseveg_500m),
-                crop_500m = scale(proportion_cropland_500m ), 
-                builtup_500m = scale(proportion_builtup_500m ), 
-                water_500m = scale(proportion_permwaterbodies_500m),
-                temp_anomaly = scale(era5_sfc_temperature_2m), 
-                prec_anomaly = scale(era5_sfc_precipitation), 
-                hum_anomaly = scale(era5_sfc_humidity),
-                population_census = scale(population_census), 
-                disp_income = scale(disp_income_2015),
-                intercept = 1) %>%
-  mutate_at(c(62:134), funs(c(scale(.)))) # scales weather vars
+                altitude = base::scale(Z_m),
+                elevation = base::scale(ele_vals...2.),
+                tree_500m = base::scale(proportion_treecover_500m ), 
+                shrub_500m = base::scale(proportion_shrubland_500m ),
+                grass_500m = base::scale(proportion_grassland_500m ), 
+                bspveg_500m = base::scale(proportion_baresparseveg_500m),
+                crop_500m = base::scale(proportion_cropland_500m ), 
+                builtup_500m = base::scale(proportion_builtup_500m ), 
+                water_500m = base::scale(proportion_permwaterbodies_500m),
+                tree_100m = base::scale(proportion_treecover_100m ), 
+                shrub_100m = base::scale(proportion_shrubland_100m ),
+                grass_100m = base::scale(proportion_grassland_100m ), 
+                bspveg_100m = base::scale(proportion_baresparseveg_100m),
+                crop_100m = base::scale(proportion_cropland_100m ), 
+                builtup_100m = base::scale(proportion_builtup_100m ), 
+                water_100m = base::scale(proportion_permwaterbodies_100m),
+                temp_anomaly = base::scale(era5_sfc_temperature_2m), 
+                prec_anomaly = base::scale(era5_sfc_precipitation), 
+                hum_anomaly = base::scale(era5_sfc_humidity),
+                disp_income_2015 = base::scale(disp_income_2015),
+                hmax_6lag = base::scale(hmax_6lag), 
+                max_temp_1.5m = base::scale(max_temp_1.5m), 
+                max_wind_intensity = base::scale(max_wind_intensity), 
+                psum_6lag = base::scale(psum_6lag), 
+                psum_4lag = base::scale(psum_4lag), 
+                hmax_4lag = base::scale(hmax_4lag), 
+                human_pop_500 = base::scale(human_pop_500),
+                intercept = 1)# %>%
+#mutate_at(c(63:124), funs(c(scale(.)))) # scales weather vars
 
 colnames(data)
+head(data)
 
 # some further data sorting 
-colnames(data)[c(8:10, 136:137)] <- c("agency_responsible", "location", "in_out", "gross_income", "income_tax")
-
+colnames(data)[c(8:10)] <- c("agency_responsible", "location", "in_out")
 data$agency_responsible = as.factor(data$agency_responsible)
 data$in_out = as.factor(data$in_out)
 data$ID.year = as.numeric(data$year) - 2012 +1
+data$ID.year.grp = data$ID.year
 data$month = as.factor(data$month)
 data$month = factor(data$month, levels = c("1", "2", "3", "4", "5", "6", "7",
                                            "8", "9", "10", "11", "12"), 
@@ -47,33 +68,23 @@ data$epidemic[data$year < 2014] <- 1
 # time since epidemic 
 data$time_since_ep <- 0
 data$time_since_ep[data$epidemic == 0] <- data$year[data$epidemic == 0] - 2013
-
-head(data)
-table(data$year, data$month) # few records at the beginning of 2012 
-
-ggplot(data, aes(x = year_week, y = value, colour = year)) +geom_point() 
-
-data <- dplyr::filter(data, value < 1000) ## one erroneous? 
-
-# # remove 2022 as only data for Jan-March and this may be affecting tail end of model
-data <- data[data$year < 2022, ]
-# remove extreme and likely erroneous value
-
-# set week 53 as week 52 as few examples and officially only 52 weeks in a year
+#set week 53 as week 52 as few examples and officially only 52 weeks in a year
 data$week.x[data$week.x == 53] <- 52
 
 
 
 
 # covs to be used in models 
-cv_covs <- c("value", "intercept", "Freguesia...Parish", "Id.Novo", "week.x", "month","year", "ID.year", 
-              "location", "longitude.x", "latitude.x",
-             "elevation", 
-              "hmax_6lag", "psum_6lag",
-             "max_temp_1.5m","max_wind_intensity",
-              "tree_500m",             
-              "grass_500m", "crop_500m", "builtup_500m",
-             "temp_anomaly", "prec_anomaly", "disp_income"
+cv_covs <- c("value", "intercept", "Id.Novo", "Freguesia...Parish", "week.x", "month","year", "ID.year", "ID.year.grp",
+            "elevation", "latitude", "longitude",
+              "hmax_6lag", "hmax_4lag",
+             "psum_6lag", "psum_4lag",
+             "max_temp_1.5m", 
+             "max_wind_intensity", 
+             "tree_500m", "shrub_500m",             
+             "grass_500m",  "crop_500m", "builtup_500m",
+             "temp_anomaly", "prec_anomaly", 
+             "human_pop_500",
 )
 
 ddf <- data[ ,..cv_covs]
@@ -120,7 +131,7 @@ ll = list.files(save_dir)
   
   form_base = paste(c("y ~ -1 + intercept",
     "f(week.x, model = 'rw2', cyclic = TRUE, group = ID.year, control.group = list(model = 'rw2'))",
-    "f(ID.year, model = 'rw2', hyper = hyper.rw_yr)",
+    "f(ID.year, model = 'rw2')",
     "f(s, model = spde2, group = s.group, control.group = list(model = 'ar1'))"),
   collapse = " + "
   )
@@ -129,19 +140,20 @@ ll = list.files(save_dir)
 # covariate names
   effect_names_500 = 
     c("f(max_temp_1.5m, model = 'rw2', hyper = hyper_rw_temp, scale.model=TRUE, constr=TRUE)",
-      "f(hmax_6lag, model = 'rw2', hyper = hyper.rw_hum)",
-      "f(prec_anomaly, model = 'ar1', hyper = hyper.ar_precan)",
+      "f(inla.group(temp_anomaly, n = 30), model = 'rw2', hyper = hyper.rw_tempan )",
+      "f(inla.group(prec_anomaly, n = 30), model = 'rw2'', hyper = hyper.rw_precan)",
       "elevation",
-      "estat_pop_1km",
+      "human_pop_500",
       "builtup_500m", 
       "crop_500m",
       "grass_500m",
       "tree_500m",
       "builtup_500m * elevation",
-      "psum_6lag",
+      "psum_4lag",
+      "hmax_4lag",
       "max_wind_intensity")
   
-  fx = vector("list", length=length(effect_names_500)+1)
+fx = vector("list", length=length(effect_names_500)+1)
   
   # models
   m1 = paste(effect_names_500, collapse=" + ")
@@ -159,8 +171,8 @@ ll = list.files(save_dir)
   # create data frame including formulae
   fx = data.frame(modid = 1:length(fx),
                   fx = fx,
-                  candidate = c(name, "tmax", "hmax_6lag", "prec_anom", "elevation", "estat_pop_1km", "builtup",
-                                "crop_500", "grass", "tree", "builtup*elevation", "psum_6lag", "max_wind_intensity"),
+                  candidate = c(name, "tmax",  "temp_anomaly", "prec_anomaly", "elevation", "human population", "builtup",
+                                "crop_500", "grass", "tree", "builtup*elevation","psum_4lag", "hmax_4lag", "max_wind_intensity"),
                   formula = paste(form_base, fx, sep=" + "))
   
   bs = data.frame(modid = "baseline", fx = "baseline", candidate="baseline", formula=form_base)
@@ -207,22 +219,22 @@ ll = list.files(save_dir)
                                         offset = 2*max.edge)
   
   plot(mesh_poly2)
-  points(ddf$longitude.x, ddf$latitude.x, col = "pink") #add points to visualise
+  points(ddf$longitude, ddf$latitude, col = "pink") #add points to visualise
+  
+  # time mesh 
+  k <- 14
+  mesh.t <- fmesher::fm_mesh_1d(seq(0 + 0.5 / k, 1 - 0.5 / k, length = k))
   
   # Set range prioirs for the spde model
   prior.median.sd = 0.01; prior.median.range = 0.05
   
   spde2 = inla.spde2.pcmatern(mesh_poly2, prior.range = c(prior.median.range, 0.5),
                               prior.sigma = c(prior.median.sd, 0.1), constr = T)
-  indexs <- inla.spde.make.index("s", n.spde = spde2$n.spde, n.group = 10)
-  
-  # time mesh 
-  k <- 10
-  mesh.t <- fmesher::fm_mesh_1d(seq(0 + 0.5 / k, 1 - 0.5 / k, length = k))
-  
-  locs = cbind(ddf$longitude.x, ddf$latitude.x)
+  indexs <- inla.spde.make.index("s", n.spde = spde2$n.spde, n.group = k)
+
+  locs = cbind(ddf$longitude, ddf$latitude)
   A = inla.spde.make.A(mesh = mesh_poly2, loc = locs, group = ddf$ID.year, group.mesh = mesh.t)
-  
+
   hyper_rw_temp = list(theta = list(prior="pc.prec", param=c(3, 0.0001)))
   hhyper.rw_yr = list(theta = list(prior="pc.prec", param=c(20, 0.0000001)))
   hyper.ar_precan = list(rho = list(prior="pc.prec", param=c(0.5, 0.000000000001)))
