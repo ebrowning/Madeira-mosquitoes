@@ -235,9 +235,11 @@ fx = vector("list", length=length(effect_names_500)+1)
   locs = cbind(ddf$longitude, ddf$latitude)
   A = inla.spde.make.A(mesh = mesh_poly2, loc = locs, group = ddf$ID.year, group.mesh = mesh.t)
 
-  hyper_rw_temp = list(theta = list(prior="pc.prec", param=c(3, 0.0001)))
-  hhyper.rw_yr = list(theta = list(prior="pc.prec", param=c(20, 0.0000001)))
-  hyper.ar_precan = list(rho = list(prior="pc.prec", param=c(0.5, 0.000000000001)))
+hyper.rw_yr = list(theta = list(prior="pc.prec", param=c(1, 0.00001)))
+hyper.rw_precan = list(theta = list(prior="pc.prec", param=c(0.5, 0.01)))
+hyper.rw_tempan = list(theta = list(prior="pc.prec", param=c(0.5, 0.01)))
+hyper.rw_temp = list(theta = list(prior="pc.prec", param=c(5, 0.0001)))
+
 
 ### ------------------------------------------------------------------------- ###
 
