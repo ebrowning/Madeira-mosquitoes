@@ -131,7 +131,7 @@ ll = list.files(save_dir)
   
   form_base = paste(c("y ~ -1 + intercept",
     "f(week.x, model = 'rw2', cyclic = TRUE, group = ID.year, control.group = list(model = 'rw2'))",
-    "f(ID.year, model = 'rw2')",
+    "f(ID.year, model = 'rw2', , hyper = hyper.rw_yr)",
     "f(s, model = spde2, group = s.group, control.group = list(model = 'ar1'))"),
   collapse = " + "
   )
