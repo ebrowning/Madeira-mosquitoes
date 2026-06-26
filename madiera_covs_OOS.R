@@ -9,6 +9,7 @@ colnames(data)
 data$hmax_6lag[data$hmax_6lag == "-Inf"] <- NA
 data$hmax_4lag[data$hmax_4lag == "-Inf"] <- NA
 data$psum_6lag[data$psum_6lag == "-Inf"] <- NA
+data$psum_4lag[data$psum_4lag == "-Inf"] <- NA
 data$max_wind_intensity[data$max_wind_intensity == "-Inf"] <- NA
 
 # scale all covariates for model
@@ -45,8 +46,8 @@ data = data %>%
                 psum_4lag = base::scale(psum_4lag), 
                 hmax_4lag = base::scale(hmax_4lag), 
                 human_pop_500 = base::scale(human_pop_500),
-                intercept = 1)# %>%
-#mutate_at(c(63:124), funs(c(scale(.)))) # scales weather vars
+                intercept = 1) %>% 
+  filter(!Concelho...Municipalitie == "Porto Santo")
 
 colnames(data)
 head(data)
@@ -77,14 +78,13 @@ data$week.x[data$week.x == 53] <- 52
 # covs to be used in models 
 cv_covs <- c("value", "intercept", "Id.Novo", "Freguesia...Parish", "week.x", "month","year", "ID.year", "ID.year.grp",
             "elevation", "latitude", "longitude",
-              "hmax_6lag", "hmax_4lag",
-             "psum_6lag", "psum_4lag",
+            "hmax_4lag",
+             "psum_4lag",
              "max_temp_1.5m", 
              "max_wind_intensity", 
-             "tree_500m", "shrub_500m",             
-             "grass_500m",  "crop_500m", "builtup_500m",
+             "tree_500m", "shrub_500m", "builtup_500m",
              "temp_anomaly", "prec_anomaly", 
-             "human_pop_500",
+             "human_pop_500"
 )
 
 ddf <- data[ ,..cv_covs]
@@ -131,7 +131,7 @@ ll = list.files(save_dir)
   
   form_base = paste(c("y ~ -1 + intercept",
     "f(week.x, model = 'rw2', cyclic = TRUE, group = ID.year, control.group = list(model = 'rw2'))",
-    "f(ID.year, model = 'rw2', , hyper = hyper.rw_yr)",
+    "f(ID.year, model = 'rw2')",
     "f(s, model = spde2, group = s.group, control.group = list(model = 'ar1'))"),
   collapse = " + "
   )
@@ -140,13 +140,11 @@ ll = list.files(save_dir)
 # covariate names
   effect_names_500 = 
     c("f(max_temp_1.5m, model = 'rw2', hyper = hyper_rw_temp, scale.model=TRUE, constr=TRUE)",
-      "f(inla.group(temp_anomaly, n = 30), model = 'rw2', hyper = hyper.rw_tempan )",
-      "f(inla.group(prec_anomaly, n = 30), model = 'rw2'', hyper = hyper.rw_precan)",
+      "f(inla.group(temp_anomaly, n = 50), model = 'rw2', hyper = hyper.rw_tempan )",
+      "f(inla.group(prec_anomaly, n = 50), model = 'rw2'', hyper = hyper.rw_precan)",
       "elevation",
       "human_pop_500",
       "builtup_500m", 
-      "crop_500m",
-      "grass_500m",
       "tree_500m",
       "builtup_500m * elevation",
       "psum_4lag",
@@ -172,7 +170,7 @@ fx = vector("list", length=length(effect_names_500)+1)
   fx = data.frame(modid = 1:length(fx),
                   fx = fx,
                   candidate = c(name, "tmax",  "temp_anomaly", "prec_anomaly", "elevation", "human population", "builtup",
-                                "crop_500", "grass", "tree", "builtup*elevation","psum_4lag", "hmax_4lag", "max_wind_intensity"),
+                                 "tree", "builtup*elevation","psum_4lag", "hmax_4lag", "max_wind_intensity"),
                   formula = paste(form_base, fx, sep=" + "))
   
   bs = data.frame(modid = "baseline", fx = "baseline", candidate="baseline", formula=form_base)
@@ -208,12 +206,14 @@ fx = vector("list", length=length(effect_names_500)+1)
   my.init = NULL
   library(sf)
   mad_poly = read_sf("Maderia_polygon.shp")
-  
+  # crop to only madeira (no Porto Santo)
+  mad_ext <- c(xmin = -17.26567, ymin = 32.58658, xmax = -16.6, ymax = 32.9)
+  mad_only <- sf::st_crop(mad_poly, mad_ext)
   # fit boundary mesh
   max.edge = 0.01
 
   # without extension
-  mesh_poly2 = fmesher::fm_mesh_2d_inla(boundary = mad_poly, 
+  mesh_poly2 = fmesher::fm_mesh_2d_inla(boundary = mad_only, 
                                         max.edge = max.edge,
                                         cutoff = max.edge/2, 
                                         offset = 2*max.edge)
@@ -231,16 +231,14 @@ fx = vector("list", length=length(effect_names_500)+1)
   spde2 = inla.spde2.pcmatern(mesh_poly2, prior.range = c(prior.median.range, 0.5),
                               prior.sigma = c(prior.median.sd, 0.1), constr = T)
   indexs <- inla.spde.make.index("s", n.spde = spde2$n.spde, n.group = k)
+  
 
   locs = cbind(ddf$longitude, ddf$latitude)
   A = inla.spde.make.A(mesh = mesh_poly2, loc = locs, group = ddf$ID.year, group.mesh = mesh.t)
-
-hyper.rw_yr = list(theta = list(prior="pc.prec", param=c(1, 0.00001)))
-hyper.rw_precan = list(theta = list(prior="pc.prec", param=c(0.5, 0.01)))
-hyper.rw_tempan = list(theta = list(prior="pc.prec", param=c(0.5, 0.01)))
-hyper.rw_temp = list(theta = list(prior="pc.prec", param=c(5, 0.0001)))
-
-
+  
+  hyper_rwt <- list(theta = list(prior = "pc.prec", param = c(1, 0.01)))
+  hyper_rw_temp = list(theta = list(prior="pc.prec", param=c(3, 0.0001)))
+  hyper_rw_hum = list(theta = list(prior="pc.prec", param=c(1, 0.001)))
 ### ------------------------------------------------------------------------- ###
 
 # ---------------- chooses and fits model under k-fold CV -------------------- #
@@ -313,7 +311,7 @@ for(i in 1:nrow(fx)){
       inla(form_i, family = "nbinomial", 
                       control.family = list(link = "log"),
                       data = inla.stack.data(stack_i), 
-                      control.inla = list(int.strategy='eb', npoints = 21),
+                      #control.inla = list(int.strategy='eb', npoints = 21),
                       control.fixed=list(prec = 1),
                       control.mode=list(restart=T, theta=my.init),
                       control.predictor=list(A = inla.stack.A(stack_i), link = 1, compute=TRUE),
@@ -328,7 +326,7 @@ for(i in 1:nrow(fx)){
         inla(form_i, family = "nbinomial", 
              control.family = list(link = "log"),
              data = inla.stack.data(stack_i), 
-             control.inla = list(int.strategy='eb', npoints = 21),
+             #control.inla = list(int.strategy='eb', npoints = 21),
              control.fixed=list(prec = 1),
              control.mode=list(restart=T, theta=my.init),
              control.predictor=list(A = inla.stack.A(stack_i), link = 1, compute=TRUE),
