@@ -236,9 +236,10 @@ fx = vector("list", length=length(effect_names_500)+1)
   locs = cbind(ddf$longitude, ddf$latitude)
   A = inla.spde.make.A(mesh = mesh_poly2, loc = locs, group = ddf$ID.year, group.mesh = mesh.t)
   
-  hyper_rwt <- list(theta = list(prior = "pc.prec", param = c(1, 0.01)))
-  hyper_rw_temp = list(theta = list(prior="pc.prec", param=c(3, 0.0001)))
-  hyper_rw_hum = list(theta = list(prior="pc.prec", param=c(1, 0.001)))
+hyper.rw_precan = list(theta = list(prior="pc.prec", param=c(0.5, 0.01)))
+hyper.rw_tempan = list(theta = list(prior="pc.prec", param=c(0.5, 0.01)))
+hyper.rw_temp = list(theta = list(prior="pc.prec", param=c(5, 0.0001)))
+hyper.rw_yr = list(theta = list(prior="pc.prec", param=c(2, 0.00001)))
 ### ------------------------------------------------------------------------- ###
 
 # ---------------- chooses and fits model under k-fold CV -------------------- #
